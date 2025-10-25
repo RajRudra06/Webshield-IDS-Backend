@@ -71,85 +71,228 @@ def engineer_meta_features(X_meta):
 
 
 def get_all_model_probs(url):
-  
     xgb_res = process_url_with_heuristic_xgboost(url)
     lgb_res = process_url_with_heuristic_lightgbm(url)
     rf_res  = process_url_with_heuristic_rf(url)
 
-    xgb_probs = probs_to_vector(xgb_res["final_probabilities"])
-    lgb_probs = probs_to_vector(lgb_res["final_probabilities"])
-    rf_probs  = probs_to_vector(rf_res["final_probabilities"])
+    def safe_get(res, key_main, key_fallback=None, default=None):
+        if key_main in res:
+            return res[key_main]
+        elif key_fallback and key_fallback in res:
+            return res[key_fallback]
+        return default
 
-    # Combine: [XGB_4, LGB_4, RF_4] = 12 features
-    combined = np.concatenate([xgb_probs, lgb_probs, rf_probs])
+    xgb_pred = safe_get(xgb_res, "final_prediction", "model_prediction")
+    lgb_pred = safe_get(lgb_res, "final_prediction", "model_prediction")
+    rf_pred  = safe_get(rf_res, "final_prediction", "model_prediction")
+
+    xgb_probs = safe_get(xgb_res, "final_probabilities", "model_probabilities", {})
+    lgb_probs = safe_get(lgb_res, "final_probabilities", "model_probabilities", {})
+    rf_probs  = safe_get(rf_res, "final_probabilities", "model_probabilities", {})
+
+    xgb_vec = probs_to_vector(xgb_probs)
+    lgb_vec = probs_to_vector(lgb_probs)
+    rf_vec  = probs_to_vector(rf_probs)
 
     return {
-        "combined_vector": combined,
-        "xgb_result": {
-            "prediction": xgb_res.get("final_prediction"),
-            "probabilities": xgb_res.get("final_probabilities"),
-            "confidence": max(xgb_res.get("final_probabilities", {}).values()),
-        },
-        "lgb_result": {
-            "prediction": lgb_res.get("final_prediction"),
-            "probabilities": lgb_res.get("final_probabilities"),
-            "confidence": max(lgb_res.get("final_probabilities", {}).values()),
-        },
-        "rf_result": {
-            "prediction": rf_res.get("final_prediction"),
-            "probabilities": rf_res.get("final_probabilities"),
-            "confidence": max(rf_res.get("final_probabilities", {}).values()),
-        },
+        "combined_vector": np.concatenate([xgb_vec, lgb_vec, rf_vec]),
+        "xgb_result": {"final_prediction": xgb_pred, "final_probabilities": xgb_probs},
+        "lgb_result": {"final_prediction": lgb_pred, "final_probabilities": lgb_probs},
+        "rf_result":  {"final_prediction": rf_pred, "final_probabilities": rf_probs}
     }
 
 
+
 def predict_ensemble(url: str):
-   
+    """
+    Run meta-ensemble prediction with full transparency of all model decisions
+    
+    Returns:
+        dict with all 4 model predictions, probabilities, and final ensemble decision
+    """
     try:
-        # Step 1: Get base model predictions
         results = get_all_model_probs(url)
+
+                # ✅ Consensus override: if all base models agree, skip meta-model
+        base_preds = [
+            results["lgb_result"]["final_prediction"],
+            results["xgb_result"]["final_prediction"],
+            results["rf_result"]["final_prediction"]
+        ]
+
+        if len(set(base_preds)) == 1:  # all 3 identical
+            unanimous_label = base_preds[0]
+            unanimous_conf = max(
+                max(results["lgb_result"]["final_probabilities"].values()),
+                max(results["xgb_result"]["final_probabilities"].values()),
+                max(results["rf_result"]["final_probabilities"].values())
+            )
+
+            return {
+                "url": url,
+                "final_decision": {
+                    "prediction": unanimous_label,
+                    "confidence": round(unanimous_conf, 4),
+                    "confidence_level": (
+                        "HIGH" if unanimous_conf > 0.85
+                        else "MEDIUM" if unanimous_conf > 0.60
+                        else "LOW"
+                    ),
+                    "threat_detected": unanimous_label != "benign",
+                    "model_used": "base_consensus"
+                },
+                "note": "All base models agreed; meta-model skipped.",
+                "model_predictions": {
+                    "lightgbm": {
+                        "prediction": results["lgb_result"]["final_prediction"],
+                        "confidence": round(max(results["lgb_result"]["final_probabilities"].values()), 4),
+                        "probabilities": results["lgb_result"]["final_probabilities"],
+                        "threat_detected": results["lgb_result"]["final_prediction"] != "benign"
+                    },
+                    "xgboost": {
+                        "prediction": results["xgb_result"]["final_prediction"],
+                        "confidence": round(max(results["xgb_result"]["final_probabilities"].values()), 4),
+                        "probabilities": results["xgb_result"]["final_probabilities"],
+                        "threat_detected": results["xgb_result"]["final_prediction"] != "benign"
+                    },
+                    "random_forest": {
+                        "prediction": results["rf_result"]["final_prediction"],
+                        "confidence": round(max(results["rf_result"]["final_probabilities"].values()), 4),
+                        "probabilities": results["rf_result"]["final_probabilities"],
+                        "threat_detected": results["rf_result"]["final_prediction"] != "benign"
+                    }
+                },
+                "meta_info": {
+                    "num_features_used": 0,
+                    "base_features": 12,
+                    "engineered_features": 0,
+                    "models_used": ["LightGBM", "XGBoost", "RandomForest"]
+                }
+            }
+
         
-        # Step 2: Prepare meta-features (12 base features)
         meta_features_raw = results["combined_vector"].reshape(1, -1)
         
-        # Step 3: Engineer additional features (12 → 25 features)
         meta_features = engineer_meta_features(meta_features_raw)
         
-        # Step 4: Meta-learner prediction
         proba = meta_model.predict_proba(meta_features)[0]
         idx = int(np.argmax(proba))
-        label = CLASSES[idx]
-        confidence = float(proba[idx])
+        meta_label = CLASSES[idx]
+        meta_confidence = float(proba[idx])
         
-        # Step 5: Determine confidence level
-        if confidence > 0.85:
+        if meta_confidence > 0.85:
             confidence_level = "HIGH"
-        elif confidence > 0.60:
+        elif meta_confidence > 0.60:
             confidence_level = "MEDIUM"
         else:
             confidence_level = "LOW"
 
         return {
             "url": url,
-            "meta_model_used": "meta_lightgbm_with_smote",  # Updated
-            "ensemble_prediction": label,
-            "ensemble_confidence": round(confidence, 4),
-            "confidence_level": confidence_level,
-            "ensemble_probabilities": {
-                cls: round(float(proba[i]), 4) for i, cls in enumerate(CLASSES)
+            
+            "final_decision": {
+                "prediction": meta_label,
+                "confidence": round(meta_confidence, 4),
+                "confidence_level": confidence_level,
+                "threat_detected": meta_label != "benign",
+                "model_used": "meta_lightgbm_with_smote"
             },
-            "base_models": {
-                "xgboost": results["xgb_result"],
-                "lightgbm": results["lgb_result"],
-                "random_forest": results["rf_result"],
+            
+            "model_predictions": {
+                "lightgbm": {
+                    "prediction": results["lgb_result"]["prediction"],
+                    "confidence": round(results["lgb_result"]["confidence"], 4),
+                    "probabilities": {
+                        cls: round(results["lgb_result"]["probabilities"].get(cls, 0.0), 4)
+                        for cls in CLASSES
+                    },
+                    "threat_detected": results["lgb_result"]["prediction"] != "benign"
+                },
+                "xgboost": {
+                    "prediction": results["xgb_result"]["prediction"],
+                    "confidence": round(results["xgb_result"]["confidence"], 4),
+                    "probabilities": {
+                        cls: round(results["xgb_result"]["probabilities"].get(cls, 0.0), 4)
+                        for cls in CLASSES
+                    },
+                    "threat_detected": results["xgb_result"]["prediction"] != "benign"
+                },
+                "random_forest": {
+                    "prediction": results["rf_result"]["prediction"],
+                    "confidence": round(results["rf_result"]["confidence"], 4),
+                    "probabilities": {
+                        cls: round(results["rf_result"]["probabilities"].get(cls, 0.0), 4)
+                        for cls in CLASSES
+                    },
+                    "threat_detected": results["rf_result"]["prediction"] != "benign"
+                },
+                "meta_ensemble": {
+                    "prediction": meta_label,
+                    "confidence": round(meta_confidence, 4),
+                    "probabilities": {
+                        cls: round(float(proba[i]), 4) 
+                        for i, cls in enumerate(CLASSES)
+                    },
+                    "threat_detected": meta_label != "benign"
+                }
             },
-            # Optional: Add model agreement info
+            
+            "agreement_analysis": {
+                "all_agree": (
+                    results["lgb_result"]["prediction"] == 
+                    results["xgb_result"]["prediction"] == 
+                    results["rf_result"]["prediction"] == 
+                    meta_label
+                ),
+                "base_models_agree": (
+                    results["lgb_result"]["prediction"] == 
+                    results["xgb_result"]["prediction"] == 
+                    results["rf_result"]["prediction"]
+                ),
+                "meta_agrees_with_majority": _check_majority_agreement(results, meta_label),
+                "disagreement_details": _get_disagreement_details(results, meta_label)
+            },
+            
             "meta_info": {
-                "num_features_used": meta_features.shape[1],
+                "num_features_used": int(meta_features.shape[1]),
                 "base_features": 12,
                 "engineered_features": 13,
+                "models_used": ["LightGBM", "XGBoost", "RandomForest", "Meta-LightGBM"]
             }
         }
 
     except Exception as e:
+        print(e)
         raise RuntimeError(f"Meta-ensemble prediction failed: {e}")
+
+
+def _check_majority_agreement(results, meta_label):
+    """Check if meta-learner agrees with majority of base models"""
+    predictions = [
+        results["lgb_result"]["prediction"],
+        results["xgb_result"]["prediction"],
+        results["rf_result"]["prediction"]
+    ]
+    from collections import Counter
+    most_common = Counter(predictions).most_common(1)[0][0]
+    return meta_label == most_common
+
+
+def _get_disagreement_details(results, meta_label):
+    """Get details about which models disagree"""
+    base_predictions = {
+        "lightgbm": results["lgb_result"]["prediction"],
+        "xgboost": results["xgb_result"]["prediction"],
+        "random_forest": results["rf_result"]["prediction"]
+    }
+    
+    disagreements = []
+    for model, pred in base_predictions.items():
+        if pred != meta_label:
+            disagreements.append({
+                "model": model,
+                "predicted": pred,
+                "meta_predicted": meta_label
+            })
+    
+    return disagreements if disagreements else None

@@ -3,7 +3,7 @@ import joblib
 from ..helperScripts.feature_extraction import extract_features_enhanced
 from ..helperScripts.typoSquattingFunction import apply_typosquatting_heuristic 
 
-artifact = joblib.load('/Users/rudrarajpurohit/Desktop/Active Ps/webshield-extension/fastapi-backend/models/716k typosquatting/rf classifier v_3.pkl')
+artifact = joblib.load('/Users/rudrarajpurohit/Desktop/Active Ps/webshield-backend/models/716k typosquatting/rf classifier v_3.pkl')
 model = artifact['model']
 features = artifact['feature_names']
 
