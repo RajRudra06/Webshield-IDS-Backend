@@ -11,6 +11,7 @@ class PredictionResponse(BaseModel):
     threat_detected: bool
     confidence: float
     model_used: str
+    confidence_level: str  # NEW: "HIGH", "MEDIUM", "LOW"
     category: str
     probabilities: Dict[str, float]
     reasons: Optional[List[str]] = []

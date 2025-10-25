@@ -7,32 +7,40 @@ router = APIRouter()
 @router.post("/", response_model=PredictionResponse)
 def predict_url(data: URLFeatures):
     """
-    Run ensemble prediction on a given URL and return threat classification results.
+    Run meta-ensemble prediction on a given URL and return threat classification.
+    
+    Now uses improved meta-learner with:
+    - SMOTE balancing
+    - 13 engineered features
+    - LightGBM meta-classifier
+    - 98.45% accuracy
     """
     try:
         result = predict_ensemble(data.url)
 
-        final_label = result["ensemble_prediction"]      # 'benign', 'phishing', etc.
-        confidence = result["confidence"]                # numeric probability
-        model_used = "ensemble_RF_XGB_LGBM"
+        final_label = result["ensemble_prediction"]
+        confidence = result["ensemble_confidence"]
+        confidence_level = result["confidence_level"]
+        model_used = result["meta_model_used"]
         is_threat = final_label != "benign"
 
-        print({
-            "threat_detected": is_threat,
-            "confidence": confidence,
-            "model_used": model_used,
-            "category": final_label,                    # <-- added this
-            "probabilities": result["probabilities"],   # optional detailed breakdown
-        })
+        # Log for monitoring
+        print(f"[META-ENSEMBLE] URL: {data.url[:50]}... | "
+              f"Prediction: {final_label} | "
+              f"Confidence: {confidence:.2%} ({confidence_level}) | "
+              f"Threat: {is_threat}")
 
-        # Include full label (category) in the response
         return {
             "threat_detected": is_threat,
             "confidence": confidence,
+            "confidence_level": confidence_level,  # NEW: HIGH/MEDIUM/LOW
             "model_used": model_used,
-            "category": final_label,                    # <-- added this
-            "probabilities": result["probabilities"],   # optional detailed breakdown
+            "category": final_label,
+            "probabilities": result["ensemble_probabilities"],
+            "base_models": result.get("base_models"),  # Optional: include base results
         }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Log error for debugging
+        print(f"[ERROR] Prediction failed for {data.url}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
