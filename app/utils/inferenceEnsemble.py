@@ -45,21 +45,16 @@ def get_all_model_probs(url):
 
 
 def predict_ensemble(url: str):
-    """
-    Predict using trained meta-learning model, returning base model outputs too.
-    """
+   
     try:
-        # Step 1: get base model predictions
         results = get_all_model_probs(url)
         meta_features = results["combined_vector"].reshape(1, -1)
 
-        # Step 2: meta-model prediction
         proba = meta_model.predict_proba(meta_features)[0]
         idx = int(np.argmax(proba))
         label = CLASSES[idx]
         confidence = float(proba[idx])
 
-        # Step 3: combine everything in one output
         return {
             "url": url,
             "meta_model_used": "meta_logistic_regression",
