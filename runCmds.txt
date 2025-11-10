@@ -1,0 +1,8 @@
+from root of the folder run:
+    python -m uvicorn app.main:app --reload
+
+on chrome go to:
+    http://127.0.0.1:8000/docs#/
+    http://127.0.0.1:8000/docs#/inference/predict_url_inference__post
+
+    

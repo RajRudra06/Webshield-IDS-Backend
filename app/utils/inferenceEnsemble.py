@@ -5,6 +5,12 @@ from .inferenceScripts.lgm_inference import process_url_with_heuristic_lightgbm
 from .inferenceScripts.xgb_inference import process_url_with_heuristic_xgboost
 from .inferenceScripts.rf_inference import process_url_with_heuristic_rf
 
+# Add these imports at the top of the file
+from .rl_agent import rl_agent
+from .rl_state_extractor import extract_rl_state, discretize_state
+from .rl_action_executor import execute_rl_action
+from .prediction_buffer import prediction_buffer
+
 # Updated path to include meta-learner
 BASE_MODEL_PATH = "/Users/rudrarajpurohit/Desktop/Active Ps/webshield-backend/models/716k typosquatting/"
 META_MODEL_PATH = BASE_MODEL_PATH + "meta_stacker.joblib"
@@ -103,168 +109,309 @@ def get_all_model_probs(url):
 
 
 
+# def predict_ensemble(url: str):
+#    
+#     try:
+#         results = get_all_model_probs(url)
+
+#                 # ✅ Consensus override: if all base models agree, skip meta-model
+#         base_preds = [
+#             results["lgb_result"]["final_prediction"],
+#             results["xgb_result"]["final_prediction"],
+#             results["rf_result"]["final_prediction"]
+#         ]
+
+#         if len(set(base_preds)) == 1:  # all 3 identical
+#             unanimous_label = base_preds[0]
+#             unanimous_conf = max(
+#                 max(results["lgb_result"]["final_probabilities"].values()),
+#                 max(results["xgb_result"]["final_probabilities"].values()),
+#                 max(results["rf_result"]["final_probabilities"].values())
+#             )
+
+#             return {
+#                 "url": url,
+#                 "final_decision": {
+#                     "prediction": unanimous_label,
+#                     "confidence": round(unanimous_conf, 4),
+#                     "confidence_level": (
+#                         "HIGH" if unanimous_conf > 0.85
+#                         else "MEDIUM" if unanimous_conf > 0.60
+#                         else "LOW"
+#                     ),
+#                     "threat_detected": unanimous_label != "benign",
+#                     "model_used": "base_consensus"
+#                 },
+#                 "note": "All base models agreed; meta-model skipped.",
+#                 "model_predictions": {
+#                     "lightgbm": {
+#                         "prediction": results["lgb_result"]["final_prediction"],
+#                         "confidence": round(max(results["lgb_result"]["final_probabilities"].values()), 4),
+#                         "probabilities": results["lgb_result"]["final_probabilities"],
+#                         "threat_detected": results["lgb_result"]["final_prediction"] != "benign"
+#                     },
+#                     "xgboost": {
+#                         "prediction": results["xgb_result"]["final_prediction"],
+#                         "confidence": round(max(results["xgb_result"]["final_probabilities"].values()), 4),
+#                         "probabilities": results["xgb_result"]["final_probabilities"],
+#                         "threat_detected": results["xgb_result"]["final_prediction"] != "benign"
+#                     },
+#                     "random_forest": {
+#                         "prediction": results["rf_result"]["final_prediction"],
+#                         "confidence": round(max(results["rf_result"]["final_probabilities"].values()), 4),
+#                         "probabilities": results["rf_result"]["final_probabilities"],
+#                         "threat_detected": results["rf_result"]["final_prediction"] != "benign"
+#                     }
+#                 },
+#                 "meta_info": {
+#                     "num_features_used": 0,
+#                     "base_features": 12,
+#                     "engineered_features": 0,
+#                     "models_used": ["LightGBM", "XGBoost", "RandomForest"]
+#                 }
+#             }
+
+        
+#         meta_features_raw = results["combined_vector"].reshape(1, -1)
+        
+#         meta_features = engineer_meta_features(meta_features_raw)
+        
+#         proba = meta_model.predict_proba(meta_features)[0]
+#         idx = int(np.argmax(proba))
+#         meta_label = CLASSES[idx]
+#         meta_confidence = float(proba[idx])
+        
+#         if meta_confidence > 0.85:
+#             confidence_level = "HIGH"
+#         elif meta_confidence > 0.60:
+#             confidence_level = "MEDIUM"
+#         else:
+#             confidence_level = "LOW"
+
+#         return {
+#             "url": url,
+            
+#             "final_decision": {
+#                 "prediction": meta_label,
+#                 "confidence": round(meta_confidence, 4),
+#                 "confidence_level": confidence_level,
+#                 "threat_detected": meta_label != "benign",
+#                 "model_used": "meta_lightgbm_with_smote"
+#             },
+            
+#             "model_predictions": {
+#                 "lightgbm": {
+#                     "prediction": results["lgb_result"]["prediction"],
+#                     "confidence": round(results["lgb_result"]["confidence"], 4),
+#                     "probabilities": {
+#                         cls: round(results["lgb_result"]["probabilities"].get(cls, 0.0), 4)
+#                         for cls in CLASSES
+#                     },
+#                     "threat_detected": results["lgb_result"]["prediction"] != "benign"
+#                 },
+#                 "xgboost": {
+#                     "prediction": results["xgb_result"]["prediction"],
+#                     "confidence": round(results["xgb_result"]["confidence"], 4),
+#                     "probabilities": {
+#                         cls: round(results["xgb_result"]["probabilities"].get(cls, 0.0), 4)
+#                         for cls in CLASSES
+#                     },
+#                     "threat_detected": results["xgb_result"]["prediction"] != "benign"
+#                 },
+#                 "random_forest": {
+#                     "prediction": results["rf_result"]["prediction"],
+#                     "confidence": round(results["rf_result"]["confidence"], 4),
+#                     "probabilities": {
+#                         cls: round(results["rf_result"]["probabilities"].get(cls, 0.0), 4)
+#                         for cls in CLASSES
+#                     },
+#                     "threat_detected": results["rf_result"]["prediction"] != "benign"
+#                 },
+#                 "meta_ensemble": {
+#                     "prediction": meta_label,
+#                     "confidence": round(meta_confidence, 4),
+#                     "probabilities": {
+#                         cls: round(float(proba[i]), 4) 
+#                         for i, cls in enumerate(CLASSES)
+#                     },
+#                     "threat_detected": meta_label != "benign"
+#                 }
+#             },
+            
+#             "agreement_analysis": {
+#                 "all_agree": (
+#                     results["lgb_result"]["prediction"] == 
+#                     results["xgb_result"]["prediction"] == 
+#                     results["rf_result"]["prediction"] == 
+#                     meta_label
+#                 ),
+#                 "base_models_agree": (
+#                     results["lgb_result"]["prediction"] == 
+#                     results["xgb_result"]["prediction"] == 
+#                     results["rf_result"]["prediction"]
+#                 ),
+#                 "meta_agrees_with_majority": _check_majority_agreement(results, meta_label),
+#                 "disagreement_details": _get_disagreement_details(results, meta_label)
+#             },
+            
+#             "meta_info": {
+#                 "num_features_used": int(meta_features.shape[1]),
+#                 "base_features": 12,
+#                 "engineered_features": 13,
+#                 "models_used": ["LightGBM", "XGBoost", "RandomForest", "Meta-LightGBM"]
+#             }
+#         }
+
+#     except Exception as e:
+#         print(e)
+#         raise RuntimeError(f"Meta-ensemble prediction failed: {e}")
+
 def predict_ensemble(url: str):
-    """
-    Run meta-ensemble prediction with full transparency of all model decisions
-    
-    Returns:
-        dict with all 4 model predictions, probabilities, and final ensemble decision
-    """
     try:
         results = get_all_model_probs(url)
-
-                # ✅ Consensus override: if all base models agree, skip meta-model
-        base_preds = [
-            results["lgb_result"]["final_prediction"],
-            results["xgb_result"]["final_prediction"],
-            results["rf_result"]["final_prediction"]
-        ]
-
-        if len(set(base_preds)) == 1:  # all 3 identical
-            unanimous_label = base_preds[0]
-            unanimous_conf = max(
-                max(results["lgb_result"]["final_probabilities"].values()),
-                max(results["xgb_result"]["final_probabilities"].values()),
-                max(results["rf_result"]["final_probabilities"].values())
-            )
-
-            return {
-                "url": url,
-                "final_decision": {
-                    "prediction": unanimous_label,
-                    "confidence": round(unanimous_conf, 4),
-                    "confidence_level": (
-                        "HIGH" if unanimous_conf > 0.85
-                        else "MEDIUM" if unanimous_conf > 0.60
-                        else "LOW"
-                    ),
-                    "threat_detected": unanimous_label != "benign",
-                    "model_used": "base_consensus"
-                },
-                "note": "All base models agreed; meta-model skipped.",
-                "model_predictions": {
-                    "lightgbm": {
-                        "prediction": results["lgb_result"]["final_prediction"],
-                        "confidence": round(max(results["lgb_result"]["final_probabilities"].values()), 4),
-                        "probabilities": results["lgb_result"]["final_probabilities"],
-                        "threat_detected": results["lgb_result"]["final_prediction"] != "benign"
-                    },
-                    "xgboost": {
-                        "prediction": results["xgb_result"]["final_prediction"],
-                        "confidence": round(max(results["xgb_result"]["final_probabilities"].values()), 4),
-                        "probabilities": results["xgb_result"]["final_probabilities"],
-                        "threat_detected": results["xgb_result"]["final_prediction"] != "benign"
-                    },
-                    "random_forest": {
-                        "prediction": results["rf_result"]["final_prediction"],
-                        "confidence": round(max(results["rf_result"]["final_probabilities"].values()), 4),
-                        "probabilities": results["rf_result"]["final_probabilities"],
-                        "threat_detected": results["rf_result"]["final_prediction"] != "benign"
-                    }
-                },
-                "meta_info": {
-                    "num_features_used": 0,
-                    "base_features": 12,
-                    "engineered_features": 0,
-                    "models_used": ["LightGBM", "XGBoost", "RandomForest"]
-                }
-            }
-
         
+        # ========== RL AGENT INTERVENTION ==========
+        
+        # Extract state features
+        state = extract_rl_state(results, url)
+        state_key = discretize_state(state)
+        
+        # RL agent selects action
+        action = rl_agent.select_action(state_key)
+        action_name = rl_agent.action_names[action]
+        
+        # Prepare meta features (in case we need them)
         meta_features_raw = results["combined_vector"].reshape(1, -1)
-        
         meta_features = engineer_meta_features(meta_features_raw)
         
-        proba = meta_model.predict_proba(meta_features)[0]
-        idx = int(np.argmax(proba))
-        meta_label = CLASSES[idx]
-        meta_confidence = float(proba[idx])
+        # Execute chosen action
+        final_prediction, final_confidence, final_probabilities = execute_rl_action(
+            action, results, meta_features, meta_model
+        )
         
-        if meta_confidence > 0.85:
+        # Store prediction for feedback learning
+        request_id = prediction_buffer.add(
+            state_key=state_key,
+            action=action,
+            prediction=final_prediction,
+            confidence=final_confidence,
+            probabilities=final_probabilities,
+            url=url
+        )
+        
+        # ========== END RL LOGIC ==========
+        
+        # Determine confidence level
+        if final_confidence > 0.85:
             confidence_level = "HIGH"
-        elif meta_confidence > 0.60:
+        elif final_confidence > 0.60:
             confidence_level = "MEDIUM"
         else:
             confidence_level = "LOW"
-
+        
         return {
             "url": url,
             
             "final_decision": {
-                "prediction": meta_label,
-                "confidence": round(meta_confidence, 4),
+                "prediction": final_prediction,
+                "confidence": round(final_confidence, 4),
                 "confidence_level": confidence_level,
-                "threat_detected": meta_label != "benign",
-                "model_used": "meta_lightgbm_with_smote"
+                "threat_detected": final_prediction != "benign",
+                "rl_action_used": action_name,
+                "rl_action_id": action,
+                "request_id": request_id
             },
             
             "model_predictions": {
                 "lightgbm": {
-                    "prediction": results["lgb_result"]["prediction"],
-                    "confidence": round(results["lgb_result"]["confidence"], 4),
+                    "prediction": results["lgb_result"]["final_prediction"],
+                    "confidence": round(max(results["lgb_result"]["final_probabilities"].values()), 4),
                     "probabilities": {
-                        cls: round(results["lgb_result"]["probabilities"].get(cls, 0.0), 4)
+                        cls: round(results["lgb_result"]["final_probabilities"].get(cls, 0.0), 4)
                         for cls in CLASSES
                     },
-                    "threat_detected": results["lgb_result"]["prediction"] != "benign"
+                    "threat_detected": results["lgb_result"]["final_prediction"] != "benign"
                 },
                 "xgboost": {
-                    "prediction": results["xgb_result"]["prediction"],
-                    "confidence": round(results["xgb_result"]["confidence"], 4),
+                    "prediction": results["xgb_result"]["final_prediction"],
+                    "confidence": round(max(results["xgb_result"]["final_probabilities"].values()), 4),
                     "probabilities": {
-                        cls: round(results["xgb_result"]["probabilities"].get(cls, 0.0), 4)
+                        cls: round(results["xgb_result"]["final_probabilities"].get(cls, 0.0), 4)
                         for cls in CLASSES
                     },
-                    "threat_detected": results["xgb_result"]["prediction"] != "benign"
+                    "threat_detected": results["xgb_result"]["final_prediction"] != "benign"
                 },
                 "random_forest": {
-                    "prediction": results["rf_result"]["prediction"],
-                    "confidence": round(results["rf_result"]["confidence"], 4),
+                    "prediction": results["rf_result"]["final_prediction"],
+                    "confidence": round(max(results["rf_result"]["final_probabilities"].values()), 4),
                     "probabilities": {
-                        cls: round(results["rf_result"]["probabilities"].get(cls, 0.0), 4)
+                        cls: round(results["rf_result"]["final_probabilities"].get(cls, 0.0), 4)
                         for cls in CLASSES
                     },
-                    "threat_detected": results["rf_result"]["prediction"] != "benign"
+                    "threat_detected": results["rf_result"]["final_prediction"] != "benign"
                 },
-                "meta_ensemble": {
-                    "prediction": meta_label,
-                    "confidence": round(meta_confidence, 4),
+                "rl_ensemble": {
+                    "prediction": final_prediction,
+                    "confidence": round(final_confidence, 4),
                     "probabilities": {
-                        cls: round(float(proba[i]), 4) 
-                        for i, cls in enumerate(CLASSES)
+                        cls: round(float(final_probabilities.get(cls, 0.0)), 4)
+                        for cls in CLASSES
                     },
-                    "threat_detected": meta_label != "benign"
+                    "threat_detected": final_prediction != "benign",
+                    "strategy_used": action_name
                 }
             },
             
             "agreement_analysis": {
                 "all_agree": (
-                    results["lgb_result"]["prediction"] == 
-                    results["xgb_result"]["prediction"] == 
-                    results["rf_result"]["prediction"] == 
-                    meta_label
+                    results["lgb_result"]["final_prediction"] == 
+                    results["xgb_result"]["final_prediction"] == 
+                    results["rf_result"]["final_prediction"]
                 ),
                 "base_models_agree": (
-                    results["lgb_result"]["prediction"] == 
-                    results["xgb_result"]["prediction"] == 
-                    results["rf_result"]["prediction"]
+                    results["lgb_result"]["final_prediction"] == 
+                    results["xgb_result"]["final_prediction"] == 
+                    results["rf_result"]["final_prediction"]
                 ),
-                "meta_agrees_with_majority": _check_majority_agreement(results, meta_label),
-                "disagreement_details": _get_disagreement_details(results, meta_label)
+                "models_in_agreement": 3 - len(set([
+                    results["lgb_result"]["final_prediction"],
+                    results["xgb_result"]["final_prediction"],
+                    results["rf_result"]["final_prediction"]
+                ]))
+            },
+            
+            "rl_info": {
+                "state_features": {
+                    "all_models_agree": state['all_agree'],
+                    "max_confidence": state['max_conf'],
+                    "confidence_std": state['conf_std'],
+                    "url_entropy": state['url_entropy'],
+                    "brand_impersonation": bool(state['brand_impersonation']),
+                    "typosquatting": bool(state['is_typosquatting'])
+                },
+                "discretized_state": str(state_key),
+                "action_selected": action,
+                "action_name": action_name,
+                "epsilon": rl_agent.epsilon,
+                "q_values": {
+                    rl_agent.action_names[i]: float(rl_agent.q_table[state_key][i])
+                    for i in range(rl_agent.n_actions)
+                }
             },
             
             "meta_info": {
                 "num_features_used": int(meta_features.shape[1]),
                 "base_features": 12,
                 "engineered_features": 13,
-                "models_used": ["LightGBM", "XGBoost", "RandomForest", "Meta-LightGBM"]
+                "models_used": ["LightGBM", "XGBoost", "RandomForest", "Meta-LightGBM", "RL-Controller"]
             }
         }
 
     except Exception as e:
-        print(e)
+        print(f"⚠️  Error in predict_ensemble: {e}")
+        import traceback
+        traceback.print_exc()
         raise RuntimeError(f"Meta-ensemble prediction failed: {e}")
-
 
 def _check_majority_agreement(results, meta_label):
     """Check if meta-learner agrees with majority of base models"""
