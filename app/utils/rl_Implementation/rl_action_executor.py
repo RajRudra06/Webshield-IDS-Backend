@@ -3,18 +3,6 @@ from collections import Counter
 
 
 def execute_rl_action(action, results, meta_features, meta_model):
-    """
-    Execute the RL agent's chosen action to get final prediction
-    
-    Args:
-        action (int): Action selected by RL agent (0-4)
-        results (dict): Results from all base models
-        meta_features (np.array): Engineered meta features
-        meta_model: The meta-learner model
-    
-    Returns:
-        tuple: (prediction, confidence, probabilities_dict)
-    """
     
     CLASSES = ['benign', 'defacement', 'malware', 'phishing']
     
