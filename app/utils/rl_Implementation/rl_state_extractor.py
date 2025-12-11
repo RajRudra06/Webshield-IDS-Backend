@@ -1,5 +1,5 @@
 import numpy as np
-from .helperScripts.feature_extraction import extract_features_enhanced
+from ..helperScripts.feature_extraction import extract_features_enhanced
 
 
 def extract_rl_state(results, url):
