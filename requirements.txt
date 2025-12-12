@@ -55,5 +55,15 @@ Werkzeug==3.1.4
 wrapt==1.14.2
 wurlitzer==3.1.1
 zipp==3.23.0
-uvicorn==0.30.3
 
+# Added for framework + API
+fastapi==0.115.0
+uvicorn==0.30.3
+pydantic==2.7.4
+
+# Added for your ML + inference imports
+tldextract==5.1.2
+joblib==1.4.2
+scikit-learn==1.4.2
+xgboost==2.0.3
+lightgbm==4.2.0
