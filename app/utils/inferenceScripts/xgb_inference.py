@@ -1,14 +1,20 @@
 import pandas as pd
 import numpy as np
 import joblib
+from pathlib import Path
 from sklearn.preprocessing import LabelEncoder
 from ..helperScripts.feature_extraction import extract_features_enhanced
 from ..helperScripts.typoSquattingFunction import apply_typosquatting_heuristic 
 
-artifact_path = "/Users/rudrarajpurohit/Desktop/Active Ps/webshield-backend/models/716k typosquatting/xgboost classifier v_3.pkl"
-artifact = joblib.load(artifact_path)
+
+BASE_DIR = Path(__file__).resolve().parents[3]
+xg_path = BASE_DIR / "models" / "716k typosquatting" / "xgboost classifier v_3.pkl"
+
+artifact = joblib.load(xg_path)
 model = artifact['model']
 features = artifact['feature_names']
+
+
 
 encoder_path = ""
 try:

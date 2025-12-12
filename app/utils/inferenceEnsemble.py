@@ -1,19 +1,20 @@
 import joblib
 import numpy as np
+from pathlib import Path
 
 from .inferenceScripts.lgm_inference import process_url_with_heuristic_lightgbm
 from .inferenceScripts.xgb_inference import process_url_with_heuristic_xgboost
 from .inferenceScripts.rf_inference import process_url_with_heuristic_rf
 
-# Add these imports at the top of the file
 from .rl_Implementation.rl_agent import rl_agent
 from .rl_Implementation.rl_state_extractor import extract_rl_state, discretize_state
 from .rl_Implementation.rl_action_executor import execute_rl_action
 from .rl_Implementation.prediction_buffer import prediction_buffer
 
-# Updated path to include meta-learner
-BASE_MODEL_PATH = "/Users/rudrarajpurohit/Desktop/Active Ps/webshield-backend/models/716k typosquatting/"
-META_MODEL_PATH = BASE_MODEL_PATH + "meta_stacker.joblib"
+BASE_DIR = Path(__file__).resolve().parents[3]
+
+META_MODEL_PATH = BASE_DIR / "models" / "716k typosquatting" / "meta_stacker.joblib"
+
 
 # Load meta-learner at startup
 meta_model = joblib.load(META_MODEL_PATH)

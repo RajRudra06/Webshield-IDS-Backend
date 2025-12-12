@@ -1,9 +1,14 @@
 import pandas as pd
 import joblib
+from pathlib import Path
 from ..helperScripts.feature_extraction import extract_features_enhanced
 from ..helperScripts.typoSquattingFunction import apply_typosquatting_heuristic 
 
-artifact = joblib.load('/Users/rudrarajpurohit/Desktop/Active Ps/webshield-backend/models/716k typosquatting/rf classifier v_3.pkl')
+BASE_DIR = Path(__file__).resolve().parents[3]
+rf_path = BASE_DIR / "models" / "716k typosquatting" / "rf classifier v_3.pkl"
+
+artifact = joblib.load(rf_path)
+
 model = artifact['model']
 features = artifact['feature_names']
 
