@@ -4,10 +4,14 @@ uvicorn
 mangum
 pydantic
 
-# ML models
-numpy
+# Compatibility (Amazon Linux / Lambda)
+urllib3<2
+
+# ML stack (PINNED where required)
+numpy<2
 pandas
-scikit-learn
+scikit-learn==1.4.2
+imbalanced-learn
 joblib
 xgboost
 lightgbm
