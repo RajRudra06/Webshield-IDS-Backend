@@ -11,13 +11,11 @@ from .rl_Implementation.rl_state_extractor import extract_rl_state, discretize_s
 from .rl_Implementation.rl_action_executor import execute_rl_action
 from .rl_Implementation.prediction_buffer import prediction_buffer
 
-BASE_DIR = Path(__file__).resolve().parents[3]
-
+BASE_DIR = Path(__file__).resolve().parents[2]
 META_MODEL_PATH = BASE_DIR / "models" / "716k typosquatting" / "meta_stacker.joblib"
 
-
-# Load meta-learner at startup
 meta_model = joblib.load(META_MODEL_PATH)
+
 
 CLASSES = ['benign', 'defacement', 'malware', 'phishing']
 
