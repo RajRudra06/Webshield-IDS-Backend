@@ -15,8 +15,6 @@ def process_url_with_heuristic_lightgbm(url):
 
     X_dict = extract_features_enhanced(url)
 
-
-    
     X = pd.DataFrame([X_dict])
 
     for col in features:

@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from .routers import inference, feedback
+from fastapi.middleware.cors import CORSMiddleware
+
 
 def create_app() -> FastAPI:
     app = FastAPI(title="WebShield IDS Backend", version="0.1")
@@ -9,6 +11,14 @@ def create_app() -> FastAPI:
 
 app = create_app()
 
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow Chrome extension
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # from fastapi import FastAPI
 # from .routers import inference, feedback
