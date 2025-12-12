@@ -1,5 +1,5 @@
 absl-py==2.3.1
-altgraph @ file:///AppleInternal/Library/BuildRoots/4~CCFWugDs7FZsE-ezBUBQZ2oEkiB80A3hW_HTewM/Library/Caches/com.apple.xbs/Sources/python3/altgraph-0.17.2-py2.py3-none-any.whl
+altgraph==0.17.2
 astunparse==1.6.3
 cachetools==6.2.2
 certifi==2025.11.12
@@ -9,7 +9,7 @@ etils==1.5.2
 flatbuffers==25.9.23
 flax==0.8.5
 fsspec==2025.10.0
-future @ file:///AppleInternal/Library/BuildRoots/4~CCFWugDs7FZsE-ezBUBQZ2oEkiB80A3hW_HTewM/Library/Caches/com.apple.xbs/Sources/python3/future-0.18.2-py3-none-any.whl
+future==0.18.2
 gast==0.7.0
 google-auth==2.41.1
 google-auth-oauthlib==1.2.3
