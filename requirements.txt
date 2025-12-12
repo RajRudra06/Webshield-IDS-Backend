@@ -23,7 +23,7 @@ jax==0.4.30
 jaxlib==0.4.30
 keras==2.15.0
 libclang==18.1.1
-macholib @ file:///AppleInternal/Library/BuildRoots/4~CCFWugDs7FZsE-ezBUBQZ2oEkiB80A3hW_HTewM/Library/Caches/com.apple.xbs/Sources/python3/macholib-1.15.2-py2.py3-none-any.whl
+altgraph==0.17.2
 Markdown==3.9
 markdown-it-py==3.0.0
 MarkupSafe==3.0.3
