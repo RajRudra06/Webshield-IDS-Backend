@@ -1,0 +1,19 @@
+# Python virtual environments (never needed in images)
+venv/
+venv_12/
+newenv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Git / local metadata
+.git/
+.gitignore
+
+# Docs and notes
+extra docs/
+
+# OS files
+.DS_Store

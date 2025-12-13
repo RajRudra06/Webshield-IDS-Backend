@@ -1,0 +1,9 @@
+FROM webshield-backend:latest
+
+# Add RIE only for testing
+ADD https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie /usr/local/bin/aws-lambda-rie
+RUN chmod +x /usr/local/bin/aws-lambda-rie
+
+# Override entrypoint for local testing
+ENTRYPOINT ["/usr/local/bin/aws-lambda-rie", "/usr/bin/python3.11", "-m", "awslambdaric"]
+CMD ["app.main.handler"]
