@@ -1,24 +1,80 @@
+# import pandas as pd
+# import numpy as np
+# from pathlib import Path
+# import joblib
+# from ..helperScripts.feature_extraction import extract_features_enhanced
+# from ..helperScripts.typoSquattingFunction import apply_typosquatting_heuristic 
+
+# BASE_DIR = Path(__file__).resolve().parents[3]
+# lgbm_path = BASE_DIR / "models" / "716k typosquatting" / "lgbm classifier v_3.pkl"
+
+# artifact = joblib.load(lgbm_path)
+# model = artifact['model']
+# features = artifact['feature_names']
+
+# def process_url_with_heuristic_lightgbm(url):
+  
+#     if not url.startswith(('http://', 'https://')):
+#         url = 'https://' + url
+
+#     X_dict = extract_features_enhanced(url)
+
+#     X = pd.DataFrame([X_dict])
+
+#     for col in features:
+#         if col not in X.columns:
+#             X[col] = 0
+#     X = X[features]
+
+#     model_pred = model.predict(X)[0]
+#     model_proba = model.predict_proba(X)[0]
+#     classes = model.classes_
+#     prob_dict = {cls: float(prob) for cls, prob in zip(classes, model_proba)}
+
+#     final_pred, final_proba, reason = apply_typosquatting_heuristic(
+#         url, model_pred, prob_dict
+#     )
+
+#     return {
+#         'url': url,
+#         'model_prediction': model_pred,
+#         'model_probabilities': prob_dict,
+#         'final_prediction': final_pred,
+#         'final_probabilities': final_proba,
+#         'detection_reason': reason,
+#         'heuristic_applied': reason != "model_decision"
+#     }
+
+
 import pandas as pd
-import numpy as np
 from pathlib import Path
 import joblib
 from ..helperScripts.feature_extraction import extract_features_enhanced
-from ..helperScripts.typoSquattingFunction import apply_typosquatting_heuristic 
+from ..helperScripts.typoSquattingFunction import apply_typosquatting_heuristic
 
-BASE_DIR = Path(__file__).resolve().parents[3]
-lgbm_path = BASE_DIR / "models" / "716k typosquatting" / "lgbm classifier v_3.pkl"
+_BASE_DIR = Path(__file__).resolve().parents[3]
+_LGBM_PATH = _BASE_DIR / "models" / "716k typosquatting" / "lgbm classifier v_3.pkl"
 
-artifact = joblib.load(lgbm_path)
-model = artifact['model']
-features = artifact['feature_names']
+_lgbm_model = None
+_lgbm_features = None
 
-def process_url_with_heuristic_lightgbm(url):
-  
-    if not url.startswith(('http://', 'https://')):
-        url = 'https://' + url
+
+def _load_lgbm():
+    global _lgbm_model, _lgbm_features
+    if _lgbm_model is None:
+        artifact = joblib.load(_LGBM_PATH)
+        _lgbm_model = artifact["model"]
+        _lgbm_features = artifact["feature_names"]
+    return _lgbm_model, _lgbm_features
+
+
+def process_url_with_heuristic_lightgbm(url: str):
+    model, features = _load_lgbm()
+
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
 
     X_dict = extract_features_enhanced(url)
-
     X = pd.DataFrame([X_dict])
 
     for col in features:
@@ -36,12 +92,11 @@ def process_url_with_heuristic_lightgbm(url):
     )
 
     return {
-        'url': url,
-        'model_prediction': model_pred,
-        'model_probabilities': prob_dict,
-        'final_prediction': final_pred,
-        'final_probabilities': final_proba,
-        'detection_reason': reason,
-        'heuristic_applied': reason != "model_decision"
+        "url": url,
+        "model_prediction": model_pred,
+        "model_probabilities": prob_dict,
+        "final_prediction": final_pred,
+        "final_probabilities": final_proba,
+        "detection_reason": reason,
+        "heuristic_applied": reason != "model_decision",
     }
-

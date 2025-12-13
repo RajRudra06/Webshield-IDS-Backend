@@ -14,7 +14,14 @@ from .rl_Implementation.prediction_buffer import prediction_buffer
 BASE_DIR = Path(__file__).resolve().parents[2]
 META_MODEL_PATH = BASE_DIR / "models" / "716k typosquatting" / "meta_stacker.joblib"
 
-meta_model = joblib.load(META_MODEL_PATH)
+_meta_model = None
+
+def _load_meta_model():
+    global _meta_model
+    if _meta_model is None:
+        _meta_model = joblib.load(META_MODEL_PATH)
+    return _meta_model
+
 
 
 CLASSES = ['benign', 'defacement', 'malware', 'phishing']
@@ -175,7 +182,9 @@ def predict_ensemble(url: str):
         
         meta_features = engineer_meta_features(meta_features_raw)
         
+        meta_model = _load_meta_model()
         proba = meta_model.predict_proba(meta_features)[0]
+
         idx = int(np.argmax(proba))
         meta_label = CLASSES[idx]
         meta_confidence = float(proba[idx])
