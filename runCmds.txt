@@ -6,4 +6,35 @@ on chrome go to:
     http://127.0.0.1:8000/docs#/
     http://127.0.0.1:8000/docs#/inference/predict_url_inference__post
 
-    
+build cmds:
+    docker build --no-cache -t webshield-backend .
+    docker build -t webshield-backend .
+
+run docker image:
+     docker run -p 9000:8080 webshield-backend     
+
+send req cmd:
+    curl -X POST http://localhost:9000/2015-03-31/functions/function/invocations \
+  -H "Content-Type: application/json" \
+  -d '{
+    "version": "2.0",
+    "routeKey": "POST /inference/",
+    "rawPath": "/inference/",
+    "rawQueryString": "",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "requestContext": {
+      "http": {
+        "method": "POST",
+        "path": "/inference/",
+        "sourceIp": "127.0.0.1",
+        "userAgent": "curl"
+      }
+    },
+    "body": "{\"url\": \"https://www.google.com\"}",
+    "isBase64Encoded": false
+  }'
+
+typical res:
+    {"statusCode": 200, "body": "{\"url\":\"https://www.google.com\",\"final_decision\":{\"prediction\":\"benign\",\"confidence\":0.999,\"confidence_level\":\"HIGH\",\"threat_detected\":false,\"model_used\":\"base_consensus\"},\"note\":\"All base models agreed; meta-model skipped.\",\"model_predictions\":{\"lightgbm\":{\"prediction\":\"benign\",\"confidence\":0.999,\"probabilities\":{\"benign\":0.999,\"phishing\":0.0005,\"malware\":0.0005,\"defacement\":0.0},\"threat_detected\":false},\"xgboost\":{\"prediction\":\"benign\",\"confidence\":0.999,\"probabilities\":{\"benign\":0.999,\"phishing\":0.0005,\"malware\":0.0005,\"defacement\":0.0},\"threat_detected\":false},\"random_forest\":{\"prediction\":\"benign\",\"confidence\":0.999,\"probabilities\":{\"benign\":0.999,\"phishing\":0.0005,\"malware\":0.0005,\"defacement\":0.0},\"threat_detected\":false}},\"meta_info\":{\"num_features_used\":0,\"base_features\":12,\"engineered_features\":0,\"models_used\":[\"LightGBM\",\"XGBoost\",\"RandomForest\"]}}", "headers": {"content-length": "871", "content-type": "application/json"}, "isBase64Encoded": false}% 
