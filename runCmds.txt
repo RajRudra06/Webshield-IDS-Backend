@@ -32,7 +32,7 @@ send req cmd:
         "userAgent": "curl"
       }
     },
-    "body": "{\"url\": \"https://www.google.com\"}",
+    "body": "{\"url\": \"htt/wwuyfguyw.google.com\"}",
     "isBase64Encoded": false
   }'
 
