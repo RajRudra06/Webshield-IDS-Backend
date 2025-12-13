@@ -1,0 +1,368 @@
+Below is a **clean, end-to-end IAM walkthrough** of *everything you did*, **why each piece exists**, **who assumes what**, and **where people usually get stuck**.
+This is written so you can **save it and reuse it later without confusion**.
+
+No hand-waving.
+
+---
+
+# Big picture first (1 minute mental model)
+
+There are **three different identities** involved:
+
+1. **Root account**
+
+   * Used **only once** for account-level fixes
+   * Never used for daily work
+
+2. **IAM User (`admin-cli-webshield`)**
+
+   * *You*, using AWS Console + AWS CLI
+   * Push images to ECR
+   * Create Lambda functions
+
+3. **IAM Role (`webshield-lambda-execution-role`)**
+
+   * *Lambda service*, not a human
+   * Assumed **by Lambda at runtime**
+   * Pulls image + writes logs
+
+Everything you did was about **connecting these three correctly**.
+
+---
+
+# STEP 0 — Why IAM is complicated here
+
+Lambda with **container images** needs **two permission paths**:
+
+1. **Creation-time permissions**
+   → Needed by *you* (IAM User)
+
+2. **Runtime permissions**
+   → Needed by *Lambda itself* (IAM Role)
+
+These are **completely separate** and mixing them causes 90% of AWS confusion.
+
+---
+
+# STEP 1 — IAM User (admin-cli-webshield)
+
+## What this user is for
+
+This user represents **you**:
+
+* AWS Console
+* AWS CLI
+* Docker push
+* Lambda creation
+
+It is **NOT** used by Lambda when running your code.
+
+---
+
+## Policy attached to IAM User
+
+This policy exists so **you can build & deploy**, not run.
+
+### What permissions it needs (and why)
+
+### 1️⃣ ECR permissions (push images)
+
+```json
+{
+  "Sid": "ECRAccess",
+  "Effect": "Allow",
+  "Action": [
+    "ecr:GetAuthorizationToken",
+    "ecr:CreateRepository",
+    "ecr:DescribeRepositories",
+    "ecr:DescribeImages",
+    "ecr:BatchCheckLayerAvailability",
+    "ecr:InitiateLayerUpload",
+    "ecr:UploadLayerPart",
+    "ecr:CompleteLayerUpload",
+    "ecr:PutImage"
+  ],
+  "Resource": "*"
+}
+```
+
+**Why**
+Without this:
+
+* `docker push` fails
+* ECR repo creation fails
+
+---
+
+### 2️⃣ Lambda permissions (create function)
+
+```json
+{
+  "Sid": "LambdaAccess",
+  "Effect": "Allow",
+  "Action": [
+    "lambda:CreateFunction",
+    "lambda:UpdateFunctionCode",
+    "lambda:UpdateFunctionConfiguration",
+    "lambda:GetFunction",
+    "lambda:ListFunctions"
+  ],
+  "Resource": "*"
+}
+```
+
+**Why**
+Needed to click **Create function** in Lambda console.
+
+---
+
+### 3️⃣ CloudWatch Logs (console sanity)
+
+```json
+{
+  "Sid": "CloudWatchLogs",
+  "Effect": "Allow",
+  "Action": [
+    "logs:CreateLogGroup",
+    "logs:CreateLogStream",
+    "logs:PutLogEvents"
+  ],
+  "Resource": "*"
+}
+```
+
+**Why**
+So you can see logs when testing.
+
+---
+
+### 4️⃣ IAM role discovery (this fixed your blocker)
+
+```json
+{
+  "Sid": "AllowRoleDiscovery",
+  "Effect": "Allow",
+  "Action": [
+    "iam:ListRoles",
+    "iam:GetRole"
+  ],
+  "Resource": "arn:aws:iam::175110779917:role/*"
+}
+```
+
+**Why this was CRITICAL**
+
+* AWS Console **always** calls `ListRoles`
+* Even if you manually select a role
+* Without this → **Create Lambda fails**
+
+This was the **root cause** of your repeated `AccessDenied`.
+
+---
+
+### 5️⃣ Allow Lambda to create/pass roles (securely)
+
+```json
+{
+  "Sid": "AllowLambdaRoleManagement",
+  "Effect": "Allow",
+  "Action": [
+    "iam:CreateRole",
+    "iam:AttachRolePolicy",
+    "iam:PutRolePolicy",
+    "iam:PassRole"
+  ],
+  "Resource": "arn:aws:iam::175110779917:role/*",
+  "Condition": {
+    "StringEquals": {
+      "iam:PassedToService": "lambda.amazonaws.com"
+    }
+  }
+}
+```
+
+**Why**
+
+* Allows Lambda service role creation
+* **Only** for Lambda
+* Prevents misuse for EC2, ECS, etc.
+
+---
+
+## 🔑 Important lesson
+
+> IAM conditions apply **per action**.
+> `ListRoles` must be unconditional.
+
+This is why your earlier policy **looked correct but failed**.
+
+---
+
+# STEP 2 — IAM Role (webshield-lambda-execution-role)
+
+## What this role is for
+
+This role is **assumed by Lambda** when your function runs.
+
+You never log in as this role.
+
+---
+
+## Trust policy (who can assume it)
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": {
+    "Service": "lambda.amazonaws.com"
+  },
+  "Action": "sts:AssumeRole"
+}
+```
+
+**Meaning**
+“Lambda service is allowed to use this role.”
+
+---
+
+## Permissions attached to the role
+
+### 1️⃣ AWSLambdaBasicExecutionRole
+
+Gives:
+
+* CloudWatch logging
+* Required for **every** Lambda
+
+---
+
+### 2️⃣ AmazonEC2ContainerRegistryReadOnly
+
+Gives:
+
+* `ecr:BatchGetImage`
+* `ecr:GetDownloadUrlForLayer`
+
+**Why**
+
+* Lambda must pull your container image
+* Without this → image pull fails
+
+---
+
+# STEP 3 — ECR Repository Policy (this was the LAST fix)
+
+Even if the role has permissions, **ECR itself must trust Lambda**.
+
+This is a **resource-based policy**.
+
+---
+
+## ECR repo policy you added (correct)
+
+```json
+{
+  "Sid": "AllowLambdaPull",
+  "Effect": "Allow",
+  "Principal": {
+    "Service": "lambda.amazonaws.com"
+  },
+  "Action": [
+    "ecr:BatchGetImage",
+    "ecr:GetDownloadUrlForLayer"
+  ]
+}
+```
+
+---
+
+## Why this is required
+
+IAM Role permission says:
+
+> “Lambda *may* pull images”
+
+ECR repo policy says:
+
+> “This repo *allows* Lambda to pull images”
+
+**Both must be true.**
+
+This is why:
+
+* Docker push worked
+* Lambda creation failed
+* Until this policy was added
+
+---
+
+# STEP 4 — Why root was needed once
+
+You used **root** only to:
+
+* Edit ECR repository policy
+
+This is acceptable because:
+
+* Repo policies are account-level
+* You did **not** create resources as root
+* You immediately went back to IAM user
+
+✅ Correct practice.
+
+---
+
+# FINAL FLOW (lock this in)
+
+### When deploying
+
+1. **You (IAM User)**
+
+   * Build Docker image
+   * Push to ECR
+   * Create Lambda
+
+2. **Lambda service**
+
+   * Assumes execution role
+   * Pulls image from ECR
+   * Runs container
+
+3. **ECR**
+
+   * Allows Lambda via repo policy
+
+---
+
+# Common mistakes you avoided (or fixed)
+
+* ❌ Using root long-term
+* ❌ Mixing user permissions with runtime role
+* ❌ Forgetting ECR repo policy
+* ❌ Over-permissive `PassRole *`
+* ❌ Missing `ListRoles`
+
+You hit **real AWS complexity**, not beginner stuff.
+
+---
+
+# Save this checklist
+
+Whenever you deploy Lambda with Docker:
+
+1. IAM User → can push + create
+2. IAM Role → Lambda runtime
+3. ECR repo policy → allow Lambda service
+4. Use image **digest**, not tag
+5. Log out/in after IAM changes
+
+---
+
+If you want next:
+
+* API Gateway wiring (clean)
+* Cold start optimization
+* Shrinking image size safely
+* Production IAM hardening
+
+Say the word.
