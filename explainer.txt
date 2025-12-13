@@ -1,0 +1,439 @@
+Got it. I’ll give you a **complete, structured, end-to-end mental model**, tightening everything you already wrote into **one coherent understanding**. No repetition, no hype, no gaps.
+
+I’ll cover **exactly these four things**, in order:
+
+1. **All components involved (what exists and why)**
+2. **Dockerfile — why each part exists (big picture, not line-by-line repetition)**
+3. **ZIP Lambda vs Container Lambda (why RIC/RIE exists in one and not the other)**
+4. **One full request flow example (API Gateway → Lambda → Runtime → Mangum → FastAPI → back)**
+
+---
+
+## 1️⃣ All components involved (from outermost to innermost)
+
+Think of this system as **layers**, not tools.
+
+### 1. AWS Lambda Platform
+
+* Manages scaling, isolation, cold starts
+* Does **not** know your code
+* Does **not** call your handler
+* Exposes the **Lambda Runtime API**
+
+Lambda’s job is orchestration, not execution.
+
+---
+
+### 2. Lambda Runtime API (core abstraction)
+
+* An **HTTP API** exposed *inside* the execution environment
+* Holds invocation events
+* Waits for a runtime to ask:
+
+  > “Give me the next event”
+
+Why it exists:
+
+* AWS supports many runtimes
+* Lambda cannot hardcode language-specific logic
+* HTTP is the lowest common denominator
+
+Lambda **pushes nothing**.
+Runtimes **pull events**.
+
+---
+
+### 3. Runtime (Python in your case)
+
+The runtime is responsible for:
+
+* Fetching events
+* Calling user code
+* Returning responses
+
+Two cases:
+
+* ZIP Lambda → AWS supplies runtime
+* Container Lambda → **you supply runtime**
+
+This is where `awslambdaric` comes in.
+
+---
+
+### 4. `awslambdaric` (AWS Lambda Runtime Interface Client)
+
+* Official Python runtime implementation
+* Talks to Runtime API
+* Calls your handler function
+
+It is **not Lambda**.
+It is **not FastAPI-related**.
+It is **mandatory for container Lambdas**.
+
+---
+
+### 5. Mangum
+
+* Adapter between **Lambda events** and **ASGI**
+* Converts:
+
+  * Lambda event → ASGI request
+  * ASGI response → Lambda response
+
+Without Mangum:
+
+* FastAPI would never understand Lambda events
+
+---
+
+### 6. FastAPI
+
+* Pure ASGI app
+* Thinks it is receiving normal HTTP
+* Completely unaware of Lambda, Docker, AWS
+
+---
+
+### 7. Docker
+
+* Freezes OS + libraries + Python + dependencies
+* Eliminates “works on my machine”
+* Makes Lambda execution deterministic
+
+Docker is not the runtime.
+Docker is the **packaging boundary**.
+
+---
+
+## 2️⃣ Dockerfile — why it exists (big picture)
+
+The Dockerfile is doing **one thing only**:
+
+> Rebuild the exact environment AWS Lambda expects, but under your control.
+
+### Why this was necessary
+
+Your Mac:
+
+* Different CPU architecture
+* Different libc
+* Different OpenMP
+* Different dynamic loader
+
+Lambda:
+
+* Linux (Amazon Linux)
+* ELF binaries
+* glibc
+* libgomp
+
+Docker fixes this by:
+
+* Matching OS
+* Matching ABI
+* Matching shared libraries
+
+---
+
+### Why Amazon Linux 2023
+
+* Same family as Lambda
+* Compatible glibc
+* Correct OpenMP behavior
+
+This directly fixed:
+
+* `libgomp.so` errors
+* `numpy._core` errors
+* sklearn ABI crashes
+* OpenSSL mismatches
+
+---
+
+### Why Python is installed manually
+
+In container Lambdas:
+
+* AWS does NOT provide Python
+* You must install it yourself
+
+ZIP Lambdas:
+
+* AWS injects Python runtime
+* You don’t see it
+
+---
+
+### Why `awslambdaric` is installed
+
+Because Lambda:
+
+* Exposes Runtime API
+* Does not execute your code
+
+`awslambdaric`:
+
+* Fetches events
+* Calls handler
+* Sends responses
+
+Without it, the container would start and do nothing.
+
+---
+
+### Why `/var/task`
+
+This is Lambda’s expected working directory.
+Using it:
+
+* Keeps behavior identical to ZIP Lambda
+* Makes handler resolution predictable
+
+---
+
+### Why RIE is included
+
+RIE = **local-only Lambda emulator**
+
+It:
+
+* Pretends to be the Runtime API
+* Allows Docker testing on your laptop
+
+Lambda **never runs RIE in production**.
+
+---
+
+## 3️⃣ ZIP Lambda vs Container Lambda (critical difference)
+
+### ZIP-based Lambda
+
+* AWS provides:
+
+  * OS
+  * Python runtime
+  * Runtime Interface Client
+* You provide:
+
+  * Code
+  * Dependencies
+
+You never see Runtime API directly.
+
+---
+
+### Container-based Lambda
+
+* AWS provides:
+
+  * Runtime API
+  * Execution isolation
+* You provide:
+
+  * OS
+  * Python
+  * Runtime (awslambdaric)
+  * Dependencies
+
+This is why:
+
+* `awslambdaric` is mandatory
+* Docker is mandatory
+* ABI issues become your responsibility
+
+---
+
+### Why RIE is not needed in ZIP Lambda
+
+Because AWS:
+
+* Already runs the runtime
+* Already handles event fetching
+
+RIE exists only to **simulate AWS locally**.
+
+---
+
+## 4️⃣ One full request flow (causal, step-by-step)
+
+Let’s walk **one real request**, focusing on **who calls whom**.
+
+---
+
+### Step 1 — Client
+
+User sends:
+
+```
+POST /inference
+```
+
+---
+
+### Step 2 — API Gateway
+
+API Gateway:
+
+* Receives HTTP
+* Validates request
+* Wraps it into a **Lambda event JSON**
+
+Example (simplified):
+
+```json
+{
+  "requestContext": {
+    "http": {
+      "method": "POST",
+      "path": "/inference/",
+      "sourceIp": "1.2.3.4"
+    }
+  },
+  "headers": {...},
+  "body": "{\"url\":\"https://example.com\"}",
+  "isBase64Encoded": false
+}
+```
+
+Then:
+
+* Sends this event to Lambda
+
+---
+
+### Step 3 — Lambda Platform
+
+Lambda:
+
+* Chooses execution environment
+* Cold start → starts container
+* Warm start → reuses container
+* Exposes **Runtime API**
+
+Lambda does **not** call your code.
+
+---
+
+### Step 4 — Runtime (`awslambdaric`)
+
+`awslambdaric`:
+
+* Calls:
+
+  ```
+  GET /runtime/invocation/next
+  ```
+* Receives the event
+* Calls:
+
+  ```python
+  handler(event, context)
+  ```
+
+Handler = `Mangum(app)`
+
+---
+
+### Step 5 — Mangum
+
+Mangum:
+
+* Inspects event
+* Detects API Gateway v2
+* Converts event → ASGI scope:
+
+  * method
+  * path
+  * headers
+  * body
+  * client IP
+
+This is why the **curl payload had to look like API Gateway**.
+
+---
+
+### Step 6 — FastAPI
+
+FastAPI:
+
+* Receives normal ASGI request
+* Routes `/inference/`
+* Runs ML logic
+* Returns JSON
+
+FastAPI has **zero awareness** of Lambda.
+
+---
+
+### Step 7 — Response (reverse path)
+
+Response flows back:
+
+```
+FastAPI
+→ Mangum
+→ awslambdaric
+→ Runtime API
+→ Lambda
+→ API Gateway
+→ Client
+```
+
+Lambda never inspects your business logic.
+
+---
+
+## Why that weird curl payload was required
+
+Because locally you were doing:
+
+```
+RIE → Runtime API → awslambdaric → Mangum → FastAPI
+```
+
+Not:
+
+```
+HTTP → FastAPI
+```
+
+Runtime API only understands **Lambda events**, not HTTP.
+
+That curl payload **was a fake API Gateway event**, not an HTTP request.
+
+---
+
+## Will RIE run in real Lambda?
+
+**No.**
+
+In AWS:
+
+* Lambda sets `AWS_LAMBDA_RUNTIME_API`
+* `awslambdaric` talks directly to Lambda
+* RIE auto-disables
+
+RIE is ignored safely.
+
+---
+
+## Final mental model (lock this)
+
+* Lambda never calls your code
+* Runtime pulls events
+* `awslambdaric` is the runtime
+* Mangum is the protocol translator
+* Docker freezes the environment
+* ZIP Lambdas hide all of this
+* Container Lambdas expose all of this
+
+If you understand **this**, you understand Lambda better than most engineers.
+
+If you want next, we can:
+
+* Draw a memory/cold-start timeline
+* Optimize model loading
+* Compare Lambda vs ECS vs EC2
+* Discuss when Lambda is a bad idea
+
+Just tell me.
