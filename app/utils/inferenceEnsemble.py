@@ -6,7 +6,7 @@ from .inferenceScripts.lgm_inference import process_url_with_heuristic_lightgbm
 from .inferenceScripts.xgb_inference import process_url_with_heuristic_xgboost
 from .inferenceScripts.rf_inference import process_url_with_heuristic_rf
 
-from .rl_Implementation.rl_agent import rl_agent
+from .rl_Implementation.rl_agent import get_rl_agent
 from .rl_Implementation.rl_state_extractor import extract_rl_state, discretize_state
 from .rl_Implementation.rl_action_executor import execute_rl_action
 from .rl_Implementation.prediction_buffer import prediction_buffer
@@ -118,6 +118,7 @@ def get_all_model_probs(url):
 def predict_ensemble(url: str):
    
     try:
+        agent = get_rl_agent() 
         results = get_all_model_probs(url)
 
                 # ✅ Consensus override: if all base models agree, skip meta-model
