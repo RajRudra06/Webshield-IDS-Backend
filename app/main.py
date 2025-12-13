@@ -4,13 +4,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="WebShield IDS Backend", version="0.1")
+    # Add redirect_slashes=False to stop the redirect loop
+    app = FastAPI(title="WebShield IDS Backend", version="0.1", redirect_slashes=False)
+
+    # Add root route
+    @app.get("/")
+    async def root():
+        return {"status": "healthy", "service": "WebShield IDS"}
 
     # Routers
     app.include_router(inference.router, prefix="/inference", tags=["inference"])
     app.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
 
-    # Middleware BEFORE handler
+    # Middleware
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -23,5 +29,5 @@ def create_app() -> FastAPI:
 
 app = create_app()
 
-# Handler AFTER app is fully configured
-handler = Mangum(app)
+# Add lifespan="off" to Mangum
+handler = Mangum(app, lifespan="off")
